@@ -40,8 +40,8 @@ const Navbar = () => (
 );
 
 const Hero = () => (
-  <section className="relative pt-40 pb-28">
-    <div className="max-w-7xl mx-auto px-6">
+  <section className="relative pt-40 pb-28 overflow-hidden">
+    <div className="max-w-7xl mx-auto px-6 relative z-10">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -77,6 +77,16 @@ const Hero = () => (
         </div>
       </motion.div>
     </div>
+
+    {/* Background texture — creates separation from navbar */}
+    <div className="absolute top-0 right-0 w-1/2 h-full pointer-events-none">
+      <img
+        src="/images/hero-bg.png"
+        alt=""
+        className="w-full h-full object-cover rounded-bl-[200px] opacity-20"
+      />
+      <div className="absolute inset-0 bg-gradient-to-r from-cream via-cream/80 to-transparent" />
+    </div>
   </section>
 );
 
@@ -103,7 +113,7 @@ const Testimonials = () => {
   ];
 
   return (
-    <section className="py-28 bg-cream">
+    <section className="py-28 bg-brand-50">
       <div className="max-w-7xl mx-auto px-6">
         <div className="mb-16">
           <h2 className="text-3xl font-bold text-brand-900 mb-4">Here's what it's actually like.</h2>
@@ -239,7 +249,7 @@ const HowItWorks = () => {
   ];
 
   return (
-    <section id="how-it-works" className="py-28 bg-cream">
+    <section id="how-it-works" className="py-28 bg-cream textured-bg">
       <div className="max-w-7xl mx-auto px-6">
         <div className="text-center max-w-3xl mx-auto mb-20">
           <h2 className="text-4xl font-bold text-brand-900 mb-4">10 weeks. One clear path.</h2>
