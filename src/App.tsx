@@ -27,6 +27,7 @@ const Navbar = () => (
       <div className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
         <a href="#benefits" className="hover:text-brand-900 transition-colors">Benefits</a>
         <a href="#how-it-works" className="hover:text-brand-900 transition-colors">Program</a>
+        <a href="#team" className="hover:text-brand-900 transition-colors">Team</a>
         <a href="#who-its-for" className="hover:text-brand-900 transition-colors">Who it's for</a>
       </div>
       <a
@@ -78,14 +79,13 @@ const Hero = () => (
       </motion.div>
     </div>
 
-    {/* Background texture — creates separation from navbar */}
-    <div className="absolute top-0 right-0 w-1/2 h-full pointer-events-none">
+    {/* Background image with organic shape — visual anchor for the hero */}
+    <div className="absolute top-0 right-0 w-1/2 h-full pointer-events-none opacity-25">
       <img
         src="/images/hero-bg.png"
         alt=""
-        className="w-full h-full object-cover rounded-bl-[200px] opacity-20"
+        className="w-full h-full object-cover rounded-bl-[200px]"
       />
-      <div className="absolute inset-0 bg-gradient-to-r from-cream via-cream/80 to-transparent" />
     </div>
   </section>
 );
@@ -297,8 +297,69 @@ const HowItWorks = () => {
   );
 };
 
+const Team = () => {
+  const team = [
+    {
+      name: "Tim Wolters",
+      title: "Founder & CEO",
+      photo: "/images/tim.png",
+      bio: "Three-time founder with exits in enterprise SaaS, edtech, and clean energy. Tim has spent 15+ years building and scaling startups from napkin sketch to acquisition. He's been through Techstars, advised for the Watson Institute and New Venture Challenge, and now channels everything he's learned into CrowdSolve — because the best way to build the next generation of climate companies is to stop letting founders figure it out alone. He designed the curriculum, runs the coaching, and won't let you off the hook."
+    },
+    {
+      name: "Patrick McHeyser",
+      title: "Co-Founder & COO",
+      photo: "/images/patrick.jpeg",
+      bio: "Software architect turned startup operator. Patrick builds the systems that make CrowdSolve run — from the community platform and engagement tools to the operational backbone that keeps a cohort of ambitious founders moving in the same direction. Before CrowdSolve, he shipped products across fintech, proptech, and developer tools. He brings a builder's mindset to everything: if it can be automated, measured, or made 10x better, he's already working on it."
+    }
+  ];
+
+  return (
+    <section id="team" className="py-28 bg-white">
+      <div className="max-w-7xl mx-auto px-6">
+        <div className="text-center max-w-3xl mx-auto mb-12">
+          <h2 className="text-4xl font-bold text-brand-900 mb-4">Who's running this.</h2>
+          <p className="text-slate-600 text-lg font-medium">Operators who've been where you are — and built their way out.</p>
+        </div>
+
+        {/* Presentation photo */}
+        <div className="mb-20 rounded-2xl overflow-hidden">
+          <img
+            src="/images/tim-patrick-presenting.png"
+            alt="Tim and Patrick presenting CrowdSolve to founders"
+            className="w-full h-64 md:h-96 object-cover object-top"
+          />
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-12">
+          {team.map((person, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: i * 0.15 }}
+              className="flex flex-col sm:flex-row gap-6"
+            >
+              <img
+                src={person.photo}
+                alt={person.name}
+                className="w-28 h-28 rounded-2xl object-cover flex-shrink-0"
+              />
+              <div>
+                <h3 className="text-xl font-bold text-brand-900">{person.name}</h3>
+                <div className="text-sm font-semibold text-brand-600 mb-3">{person.title}</div>
+                <p className="text-slate-600 leading-relaxed">{person.bio}</p>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+};
+
 const WhoItsFor = () => (
-  <section id="who-its-for" className="py-28 bg-white">
+  <section id="who-its-for" className="py-28 bg-brand-50">
     <div className="max-w-7xl mx-auto px-6">
       <div className="text-center max-w-3xl mx-auto mb-20">
         <h2 className="text-4xl font-bold text-brand-900 mb-4">This isn't for everyone.</h2>
@@ -308,7 +369,7 @@ const WhoItsFor = () => (
       </div>
 
       <div className="grid md:grid-cols-2 gap-8">
-        <div className="p-10 rounded-2xl bg-brand-50 border border-brand-200">
+        <div className="p-10 rounded-2xl bg-white border border-brand-200">
           <div className="flex items-center gap-3 mb-8">
             <div className="w-10 h-10 bg-brand-500 rounded-full flex items-center justify-center">
               <CheckCircle2 className="w-6 h-6 text-brand-900" />
@@ -330,7 +391,7 @@ const WhoItsFor = () => (
           </ul>
         </div>
 
-        <div className="p-10 rounded-2xl bg-cream border border-brand-900/5">
+        <div className="p-10 rounded-2xl bg-white border border-brand-900/5">
           <div className="flex items-center gap-3 mb-8">
             <div className="w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center">
               <XCircle className="w-6 h-6 text-slate-500" />
@@ -405,6 +466,7 @@ export default function App() {
         <Testimonials />
         <Benefits />
         <HowItWorks />
+        <Team />
         <WhoItsFor />
         <BottomCTA />
       </main>
