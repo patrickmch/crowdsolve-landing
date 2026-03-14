@@ -326,7 +326,7 @@ const Team = () => {
           <img
             src="/images/tim-patrick-presenting.png"
             alt="Tim and Patrick presenting CrowdSolve to founders"
-            className="w-full h-64 md:h-80 object-cover object-[center_60%]"
+            className="w-full h-64 md:h-80 object-cover object-[center_30%]"
           />
         </div>
 
