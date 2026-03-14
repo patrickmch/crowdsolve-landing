@@ -85,16 +85,19 @@ const Testimonials = () => {
     {
       name: "Cody",
       role: "Solo founder, clean energy",
+      photo: "/images/cody.png",
       content: "I can get a little distracted by the next shiny object and so this forces me to sit down and go okay... I'm following a set of guidelines that is moving my business forward."
     },
     {
       name: "Mel",
       role: "Founder, sustainable consumer goods",
+      photo: "/images/mel.jpg",
       content: "It gets lonely. It gets really lonely. Just to look at what people are going through — their wins — that gives me energy."
     },
     {
       name: "Frank",
       role: "Founder, climate infrastructure",
+      photo: "/images/frank.jpg",
       content: "It's really the outside input, feedback, focusing on some of the important components that need to be in place to be successful."
     }
   ];
@@ -117,9 +120,12 @@ const Testimonials = () => {
               className="p-10 rounded-2xl bg-white border border-brand-900/5"
             >
               <p className="text-2xl text-slate-800 italic leading-snug mb-8">"{t.content}"</p>
-              <div>
-                <div className="font-bold text-brand-900">{t.name}</div>
-                <div className="text-sm text-slate-500">{t.role}</div>
+              <div className="flex items-center gap-3">
+                <img src={t.photo} alt={t.name} className="w-12 h-12 rounded-full object-cover" />
+                <div>
+                  <div className="font-bold text-brand-900">{t.name}</div>
+                  <div className="text-sm text-slate-500">{t.role}</div>
+                </div>
               </div>
             </motion.div>
           ))}
