@@ -13,6 +13,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import ApplicationForm from './ApplicationForm';
 
 const Logo = ({ className = "h-8" }: { className?: string }) => (
   <img src="/images/crowdsolve-logo.png" alt="CrowdSolve" className={className} />
@@ -416,24 +417,17 @@ const WhoItsFor = () => (
   </section>
 );
 
-const BottomCTA = () => (
+const ApplySection = () => (
   <section id="apply" className="py-28 bg-cream">
     <div className="max-w-5xl mx-auto px-6">
-      <div className="bg-brand-900 rounded-3xl p-12 md:p-20 text-center text-white">
-        <h2 className="text-4xl md:text-6xl font-bold mb-6">Ready to stop building alone?</h2>
-        <p className="text-brand-200 text-xl mb-12 max-w-2xl mx-auto font-medium">
-          Apply for the Beta cohort. We review every application and respond within a week.
+      <div className="text-center max-w-3xl mx-auto mb-12">
+        <h2 className="text-4xl font-bold text-brand-900 mb-4">Apply for the Beta.</h2>
+        <p className="text-slate-600 text-lg font-medium">
+          We're not looking for the perfect idea. We're looking for founders who show up, help each other, and take action.
         </p>
-        <div className="flex flex-col items-center gap-6">
-          <button className="group bg-brand-500 text-brand-900 px-10 py-5 rounded-full text-xl font-bold flex items-center gap-2 hover:bg-brand-400 transition-all shadow-2xl shadow-brand-500/20">
-            Apply Now
-            <ArrowRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
-          </button>
-          <div className="flex flex-col text-brand-200">
-            <span className="text-sm font-semibold">Free to apply · Starts April 13</span>
-            <span className="text-xs opacity-60">Rolling review</span>
-          </div>
-        </div>
+      </div>
+      <div className="max-w-xl mx-auto bg-white rounded-2xl p-8 md:p-10 border border-brand-900/5 shadow-sm">
+        <ApplicationForm />
       </div>
     </div>
   </section>
@@ -468,7 +462,7 @@ export default function App() {
         <HowItWorks />
         <Team />
         <WhoItsFor />
-        <BottomCTA />
+        <ApplySection />
       </main>
       <Footer />
     </div>
