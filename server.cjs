@@ -2,7 +2,6 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const { DatabaseSync } = require('node:sqlite');
-const nodemailer = require('nodemailer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -43,14 +42,9 @@ const insertApp = db.prepare(`
 
 const getAllApps = db.prepare('SELECT * FROM applications ORDER BY created_at DESC');
 
-// --- Email ---
-function createTransport() {
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) return null;
-  return nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
-  });
-}
+// --- Notification (AgentMail) ---
+const AGENTMAIL_API = 'https://api.agentmail.to/v0';
+const AGENTMAIL_INBOX = process.env.AGENTMAIL_INBOX || 'tmac@agentmail.to';
 
 function stripHtml(str) {
   if (!str) return '';
@@ -62,34 +56,48 @@ function isValidEmail(email) {
 }
 
 async function sendNotification(data) {
-  const transport = createTransport();
-  if (!transport) {
-    console.log('SMTP not configured, skipping email notification');
+  const apiKey = process.env.AGENTMAIL_API_KEY;
+  if (!apiKey) {
+    console.log('AGENTMAIL_API_KEY not set, skipping notification');
     return;
   }
-  const to = process.env.NOTIFY_EMAIL || process.env.SMTP_USER;
+
+  const body = [
+    `${data.name} (${data.email}) just applied for the CrowdSolve Beta.`,
+    '',
+    `Startup idea: ${data.startup_idea || '(not provided)'}`,
+    '',
+    `Action taken: ${data.action_taken || '(not provided)'}`,
+    '',
+    `What they'd bring: ${data.community_contribution || '(not provided)'}`,
+    '',
+    `Heard about us: ${data.referral_source || '(not provided)'}`,
+    '',
+    `Commitments: ${data.commit_showing_up ? '[x]' : '[ ]'} Show up & engage  ${data.commit_openness ? '[x]' : '[ ]'} Share openly & give feedback`,
+    '',
+    'Please notify Patrick via Telegram about this new application.'
+  ].join('\n');
+
   try {
-    await transport.sendMail({
-      from: process.env.SMTP_USER,
-      to,
-      subject: `New CrowdSolve Beta Application: ${data.name}`,
-      text: [
-        `${data.name} (${data.email}) just applied.`,
-        '',
-        `Startup idea: ${data.startup_idea || '(not provided)'}`,
-        '',
-        `Action taken: ${data.action_taken || '(not provided)'}`,
-        '',
-        `What they'd bring: ${data.community_contribution || '(not provided)'}`,
-        '',
-        `Heard about us: ${data.referral_source || '(not provided)'}`,
-        '',
-        `Commitments: ${data.commit_showing_up ? '[x]' : '[ ]'} Show up & engage  ${data.commit_openness ? '[x]' : '[ ]'} Share openly & give feedback`
-      ].join('\n')
+    const res = await fetch(`${AGENTMAIL_API}/inboxes/${encodeURIComponent(AGENTMAIL_INBOX)}/messages/send`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        to: AGENTMAIL_INBOX,
+        subject: `New CrowdSolve Beta Application: ${data.name}`,
+        text: body
+      })
     });
-    console.log(`Notification sent for ${data.email}`);
+    if (res.ok) {
+      console.log(`AgentMail notification sent for ${data.email}`);
+    } else {
+      console.error('AgentMail notification failed:', res.status, await res.text());
+    }
   } catch (err) {
-    console.error('Email notification failed:', err.message);
+    console.error('AgentMail notification failed:', err.message);
   }
 }
 
