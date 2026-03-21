@@ -110,11 +110,12 @@ function requireAdmin(req, res, next) {
 
 ### GET /api/applications (updated)
 
-Add optional `?status=<value>` query parameter for server-side filtering:
+Add optional `?status=<value>` query parameter for server-side filtering. This requires a separate prepared statement or dynamic query path — the existing `getAllApps` prepared statement does not support parameters.
+
 ```sql
--- Without filter
+-- Without filter (existing getAllApps)
 SELECT * FROM applications ORDER BY created_at DESC
--- With filter
+-- With filter (new prepared statement)
 SELECT * FROM applications WHERE status = ? ORDER BY created_at DESC
 ```
 
@@ -168,6 +169,10 @@ ALTER TABLE applications ADD COLUMN payment_status TEXT DEFAULT 'pending';
 
 Migration runs at server startup (idempotent — wraps each ALTER in a try/catch that ignores "duplicate column" errors).
 
+**Note**: Existing rows will have `NULL` for `updated_at` until next updated. MCP tools and API responses should treat `null` as "never updated since migration." The `notes` field in PATCH is sanitized with `stripHtml()` (same as the apply endpoint) despite being admin-only, to prevent stored XSS if an admin UI is ever added.
+
+**Note on COALESCE**: The UPDATE SQL uses `COALESCE(?, field)` which means passing `null` keeps the existing value. Notes cannot be "cleared" to null — this is intentional for an append-style workflow. To replace notes, pass the new text.
+
 ## Section 3: MCP Server — crowdsolve-applications
 
 A lightweight stdio-based MCP server that wraps the Railway admin API. Lives at `~/.claude/mcp-servers/crowdsolve-applications/`.
@@ -193,7 +198,7 @@ Compile with `tsc` to `dist/`. The MCP registration runs `node dist/index.js`. A
 | `get_application` | `id` (number) | Get full details for one application by ID. |
 | `approve_application` | `id` (number), `send_payment?` (boolean, default true), `notes?` (string) | Set status=approved. If send_payment=true, emails applicant the Stripe Payment Link. |
 | `decline_application` | `id` (number), `send_email?` (boolean, default false), `notes?` (string) | Set status=declined. Optionally sends a polite decline email. |
-| `update_application` | `id` (number), `notes?` (string), `payment_status?` (string), `status?` (string) | Update notes, payment_status, or status (including waitlisted) on an application. |
+| `update_application` | `id` (number), `notes?` (string), `payment_status?` (string), `status?` (string) | Update notes, payment_status, or status (including waitlisted) on an application. **Note**: Setting status to `approved` via this tool does NOT send a payment email. Use `approve_application` for the standard approve-and-notify flow. |
 
 ### Error Handling
 
@@ -351,6 +356,7 @@ The redirect changes the URL in the browser bar to the Railway domain.
 | 14 | Double-send guard works on payment endpoint | Call send-payment twice, verify warning on second call |
 | 15 | Auth rejects invalid/missing ADMIN_KEY on all admin endpoints | Call PATCH and POST without auth, verify 401 |
 | 16 | MCP tools return actionable error messages | Approve non-existent ID, verify clear error message |
+| 17 | Decline with send_email=true sends decline email | Decline test app with send_email=true, verify email received |
 
 ## Out of Scope
 
