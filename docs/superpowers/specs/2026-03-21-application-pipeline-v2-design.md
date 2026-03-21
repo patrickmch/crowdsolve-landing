@@ -16,16 +16,16 @@ Applicant ──▶ Landing Page (Railway)
                    ▼
              Express API ──▶ SQLite (Railway Volume at /app/data)
                    │
-                   ├──▶ AgentMail → tmac@agentmail.to (Terry)
-                   └──▶ AgentMail → patrick@crowdsolve.eco (Patrick)
+                   ├──▶ AgentMail (from: tmac@agentmail.to) → tmac@agentmail.to (Terry)
+                   └──▶ AgentMail (from: tmac@agentmail.to) → patrick@crowdsolve.eco (Patrick)
 
 Patrick (Claude Code) ──MCP──▶ crowdsolve-applications MCP Server
-                                        │
+                                        │ (server-to-server HTTP, no CORS needed)
                                         ▼
                                   Railway Express API
                                         │
                                         ├──▶ PATCH status (approve/decline)
-                                        └──▶ AgentMail → Applicant (payment link / decline)
+                                        └──▶ AgentMail (from: tmac@agentmail.to) → Applicant
 
 crowdsolve.eco/beta ──iframe──▶ Railway Landing Page
 ```
@@ -41,34 +41,82 @@ Application submissions trigger a single AgentMail notification to `tmac@agentma
 - Same email content: applicant name, email, startup idea, action taken, contribution, commitments, referral source
 
 ### Implementation Detail
+
+Extract a reusable `sendEmail(to, subject, text)` helper from the existing inline fetch call. The sender is always the AgentMail inbox (`tmac@agentmail.to`) — only the `to` field varies per recipient. AgentMail's send API relays to external addresses via outbound SMTP.
+
 ```javascript
-// In server.cjs
-const NOTIFY_EMAILS = (process.env.NOTIFY_EMAILS || '')
-  .split(',')
-  .map(e => e.trim())
-  .filter(Boolean);
+// In server.cjs — extracted helper
+async function sendEmail(to, subject, text) {
+  const apiKey = process.env.AGENTMAIL_API_KEY;
+  if (!apiKey) { console.log('AGENTMAIL_API_KEY not set, skipping email'); return; }
+
+  // URL path = sender inbox. "to" field = recipient (can be external).
+  const res = await fetch(
+    `${AGENTMAIL_API}/inboxes/${encodeURIComponent(AGENTMAIL_INBOX)}/messages/send`,
+    {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to, subject, text })
+    }
+  );
+  if (!res.ok) console.error(`Email to ${to} failed:`, res.status, await res.text());
+}
+
+const NOTIFY_EMAILS = (process.env.NOTIFY_EMAILS || '').split(',').map(e => e.trim()).filter(Boolean);
 
 async function sendNotification(data) {
-  // Existing AgentMail notification to Terry (unchanged)
-  await sendToAgentMail(AGENTMAIL_INBOX, data);
+  const subject = `New CrowdSolve Beta Application: ${data.name}`;
+  const text = formatNotificationBody(data);
 
-  // Direct notifications to additional recipients
+  // Terry (existing)
+  sendEmail(AGENTMAIL_INBOX, subject, text);
+
+  // Direct notifications to additional recipients (fire-and-forget, no await)
   for (const email of NOTIFY_EMAILS) {
-    await sendToAgentMail(email, data);
+    sendEmail(email, subject, text);
   }
 }
 ```
 
-AgentMail's send API supports arbitrary `to` addresses — no additional service needed.
+**Note**: All email sends are fire-and-forget (no `await`). This matches the existing pattern and prevents email failures from blocking HTTP responses. `DatabaseSync` is synchronous and blocks the event loop during writes, so keeping email sends non-blocking avoids compounding latency.
+
+### Known Limitation: Sender Address
+All emails are sent from `tmac@agentmail.to`. Applicant-facing emails (approval/decline) will show this as the sender. If a custom sender like `team@crowdsolve.eco` is needed, AgentMail would need a custom domain configuration or a separate SMTP service would be required. For MVP, the AgentMail address is acceptable — replies will land in the AgentMail inbox which Terry monitors.
 
 ## Section 2: Express API — Approval Endpoints
+
+### Auth Middleware
+
+Extract the existing inline auth check into a reusable middleware. Apply to all admin endpoints (`GET /api/applications`, `PATCH /api/applications/:id`, `POST /api/applications/:id/send-payment`).
+
+```javascript
+function requireAdmin(req, res, next) {
+  const authHeader = req.headers.authorization;
+  const adminKey = process.env.ADMIN_KEY;
+  if (!adminKey || !authHeader || authHeader !== `Bearer ${adminKey}`) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  next();
+}
+```
 
 ### New Endpoints
 
 | Endpoint | Method | Auth | Description |
 |----------|--------|------|-------------|
-| `PATCH /api/applications/:id` | PATCH | Bearer ADMIN_KEY | Update status and/or notes |
+| `GET /api/applications` | GET | Bearer ADMIN_KEY | List applications (existing, updated with `?status=` filter) |
+| `PATCH /api/applications/:id` | PATCH | Bearer ADMIN_KEY | Update status, notes, and/or payment_status |
 | `POST /api/applications/:id/send-payment` | POST | Bearer ADMIN_KEY | Send payment link email to applicant |
+
+### GET /api/applications (updated)
+
+Add optional `?status=<value>` query parameter for server-side filtering:
+```sql
+-- Without filter
+SELECT * FROM applications ORDER BY created_at DESC
+-- With filter
+SELECT * FROM applications WHERE status = ? ORDER BY created_at DESC
+```
 
 ### PATCH /api/applications/:id
 
@@ -84,12 +132,32 @@ Request body (all fields optional):
 Valid `status` values: `new`, `approved`, `declined`, `waitlisted`
 Valid `payment_status` values: `pending`, `sent`, `paid`, `failed`
 
+Update SQL explicitly sets `updated_at`:
+```sql
+UPDATE applications
+SET status = COALESCE(?, status),
+    notes = COALESCE(?, notes),
+    payment_status = COALESCE(?, payment_status),
+    updated_at = datetime('now')
+WHERE id = ?
+```
+
 On status change to `approved` with query param `?send_payment=true`:
 - Automatically triggers the payment link email to the applicant
 
+**Error handling**:
+- 404 if application ID does not exist
+- 400 if `status` or `payment_status` value is not in the valid set
+- 400 if `send_payment=true` but `STRIPE_PAYMENT_URL` is not configured
+
 ### POST /api/applications/:id/send-payment
 
-Sends (or re-sends) the payment link email to the applicant. Requires `STRIPE_PAYMENT_URL` env var to be set. Updates `payment_status` to `sent`.
+Sends (or re-sends) the payment link email to the applicant. Updates `payment_status` to `sent`.
+
+**Guards**:
+- 404 if application ID does not exist
+- 400 if `STRIPE_PAYMENT_URL` env var is not set
+- If `payment_status` is already `sent` or `paid`, returns a warning response (`{ warning: "Payment link already sent", payment_status: "sent" }`) unless `?force=true` is passed. Prevents accidental double-sends.
 
 ### Schema Migration
 
@@ -98,7 +166,7 @@ ALTER TABLE applications ADD COLUMN updated_at TEXT;
 ALTER TABLE applications ADD COLUMN payment_status TEXT DEFAULT 'pending';
 ```
 
-Migration runs at server startup (idempotent — checks if columns exist first).
+Migration runs at server startup (idempotent — wraps each ALTER in a try/catch that ignores "duplicate column" errors).
 
 ## Section 3: MCP Server — crowdsolve-applications
 
@@ -107,11 +175,15 @@ A lightweight stdio-based MCP server that wraps the Railway admin API. Lives at 
 ### File Structure
 ```
 ~/.claude/mcp-servers/crowdsolve-applications/
-├── package.json
-├── tsconfig.json
+├── package.json          # deps: @modelcontextprotocol/sdk
+├── tsconfig.json         # target: ES2022, module: Node16
 └── src/
     └── index.ts
 ```
+
+### Build & Run
+
+Compile with `tsc` to `dist/`. The MCP registration runs `node dist/index.js`. Alternatively, install `tsx` as a dev dep and use `tsx src/index.ts` as the command — avoids a build step during development.
 
 ### Tools
 
@@ -121,14 +193,25 @@ A lightweight stdio-based MCP server that wraps the Railway admin API. Lives at 
 | `get_application` | `id` (number) | Get full details for one application by ID. |
 | `approve_application` | `id` (number), `send_payment?` (boolean, default true), `notes?` (string) | Set status=approved. If send_payment=true, emails applicant the Stripe Payment Link. |
 | `decline_application` | `id` (number), `send_email?` (boolean, default false), `notes?` (string) | Set status=declined. Optionally sends a polite decline email. |
-| `update_application` | `id` (number), `notes?` (string), `payment_status?` (string) | Update notes or payment_status on an application. |
+| `update_application` | `id` (number), `notes?` (string), `payment_status?` (string), `status?` (string) | Update notes, payment_status, or status (including waitlisted) on an application. |
+
+### Error Handling
+
+All tools return structured error messages:
+- **Application not found**: `"No application found with ID {id}"` (maps from Express 404)
+- **Missing payment URL**: `"STRIPE_PAYMENT_URL is not configured. Set it before sending payment links."` (maps from Express 400)
+- **Payment already sent**: `"Payment link already sent (status: sent). Use force=true to resend."` (maps from Express warning)
+- **Network errors**: `"Failed to reach Railway API at {url}: {error message}"`
+- **Auth errors**: `"Authentication failed. Check CROWDSOLVE_ADMIN_KEY."`
+
+All Express API error responses are passed through with context so Claude Code gets actionable messages.
 
 ### Configuration
 
 Environment variables (set in Claude Code MCP config):
 - `CROWDSOLVE_API_URL` — Railway base URL (e.g. `https://crowdsolve-landing-production.up.railway.app`)
 - `CROWDSOLVE_ADMIN_KEY` — Same Bearer token as the Express ADMIN_KEY
-- `STRIPE_PAYMENT_URL` — Stripe Payment Link URL (passed through to Express)
+- `STRIPE_PAYMENT_URL` — Stripe Payment Link URL (passed through to Express on approve)
 
 ### Registration
 
@@ -149,7 +232,15 @@ In Claude Code settings (`~/.claude/settings.json` or project settings):
 }
 ```
 
+### Note on CORS
+
+Admin API endpoints are server-to-server only (MCP server on turtle → Railway Express). No CORS headers needed. Browser-based admin access is out of scope.
+
 ## Section 4: Applicant Emails
+
+### First Name Extraction
+
+Templates use `{firstName}`. Extract via: `firstName = name.split(' ')[0] || name`. Single-name applicants or empty splits fall back to the full `name` field.
 
 ### Approval Email (with payment link)
 
@@ -189,6 +280,8 @@ or when we launch the next cohort.
 
 Both templates live as string constants in `server.cjs`. All outgoing email content goes through humanizer before deployment.
 
+**Sender address**: Emails are sent from `tmac@agentmail.to` (see Section 1 known limitation). Replies go to the AgentMail inbox.
+
 ## Section 5: Stripe Integration (Placeholder)
 
 No Stripe API integration for MVP. Manual flow:
@@ -214,6 +307,10 @@ One-time manual setup in Railway dashboard:
 
 No code changes needed. The server already writes to `data/applications.db` which maps to `/app/data/applications.db` in the container.
 
+### Known Limitation: DatabaseSync
+
+The server uses `node:sqlite`'s `DatabaseSync` which blocks the event loop during writes. For a beta cohort with single-digit daily writes, this is a non-issue. If traffic scales significantly, consider migrating to an async SQLite driver (like `better-sqlite3` with worker threads) or Postgres.
+
 ## Section 7: crowdsolve.eco/beta URL
 
 Separate from code work — Circle admin panel setup:
@@ -222,14 +319,17 @@ Separate from code work — Circle admin panel setup:
 3. Add a custom HTML/embed block with full-width iframe:
    ```html
    <iframe src="https://crowdsolve-landing-production.up.railway.app"
-           style="border:0; width:100%; height:100vh;"
-           allow="forms">
+           style="border:0; width:100%; height:100vh;">
    </iframe>
    ```
 4. Set page access to Public
 5. Result: `crowdsolve.eco/beta` loads the Railway landing page
 
-Alternative: If Circle supports custom JS in page blocks, a redirect script (`window.location.href = "..."`) would avoid iframe quirks but changes the URL in the browser bar.
+**Important**: Test the iframe embed in a Circle test/draft page first. Circle's HTML blocks may sanitize iframe attributes. If the iframe is stripped, fall back to a JavaScript redirect approach:
+```html
+<script>window.location.href = "https://crowdsolve-landing-production.up.railway.app";</script>
+```
+The redirect changes the URL in the browser bar to the Railway domain.
 
 ## Eval Criteria
 
@@ -242,12 +342,15 @@ Alternative: If Circle supports custom JS in page blocks, a redirect script (`wi
 | 5 | MCP `get_application` returns full application details | Get app by ID, verify all fields present |
 | 6 | MCP `approve_application` sets status=approved and sends payment email | Approve test app, check status + email |
 | 7 | MCP `decline_application` sets status=declined | Decline test app, verify status change |
-| 8 | Payment email contains valid Stripe Payment Link | Check email content after approval |
+| 8 | Payment email contains valid Stripe Payment Link and correct firstName | Check email content after approval |
 | 9 | Decline email sends only when explicitly requested | Decline without send_email, verify no email sent |
 | 10 | `payment_status` field updates correctly via MCP | Update to 'paid', verify in DB |
-| 11 | SQLite DB persists across Railway deployments | Deploy new version, verify existing data survives |
-| 12 | `crowdsolve.eco/beta` loads the landing page | Visit URL in browser |
+| 11 | SQLite DB persists across Railway deployments | Deploy a no-op change to Railway. Use `list_applications` MCP tool to confirm previously submitted test applications still appear. |
+| 12 | `crowdsolve.eco/beta` loads the landing page | Visit URL in browser, verify form is functional |
 | 13 | Application form still works end-to-end | Submit application via the form, verify DB + notifications |
+| 14 | Double-send guard works on payment endpoint | Call send-payment twice, verify warning on second call |
+| 15 | Auth rejects invalid/missing ADMIN_KEY on all admin endpoints | Call PATCH and POST without auth, verify 401 |
+| 16 | MCP tools return actionable error messages | Approve non-existent ID, verify clear error message |
 
 ## Out of Scope
 
@@ -257,6 +360,8 @@ Alternative: If Circle supports custom JS in page blocks, a redirect script (`wi
 - Admin web UI (MCP tools replace this)
 - Applicant-facing status tracking / portal
 - Automated AI evaluation of applications (exists separately on turtle cron)
+- Custom sender email domain for applicant-facing emails
+- Rate limiting on admin endpoints (auth-gated, low traffic)
 
 ## Dependencies
 
@@ -265,3 +370,4 @@ Alternative: If Circle supports custom JS in page blocks, a redirect script (`wi
 - `STRIPE_PAYMENT_URL` from Tim (can deploy without it, payment emails just won't send until configured)
 - `ADMIN_KEY` env var on Railway (already exists or needs to be set)
 - AgentMail API key (already configured on Railway)
+- `@modelcontextprotocol/sdk` npm package (for MCP server)
