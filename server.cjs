@@ -283,6 +283,34 @@ app.patch('/api/applications/:id', requireAdmin, (req, res) => {
   res.json(updated);
 });
 
+app.post('/api/applications/:id/send-payment', requireAdmin, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
+
+  const record = getAppById.get(id);
+  if (!record) return res.status(404).json({ error: `No application found with ID ${id}` });
+
+  const paymentUrl = process.env.STRIPE_PAYMENT_URL;
+  if (!paymentUrl) {
+    return res.status(400).json({ error: 'STRIPE_PAYMENT_URL is not configured. Set it before sending payment links.' });
+  }
+
+  // Double-send guard
+  if ((record.payment_status === 'sent' || record.payment_status === 'paid') && req.query.force !== 'true') {
+    return res.json({
+      warning: `Payment link already sent (status: ${record.payment_status}). Use ?force=true to resend.`,
+      payment_status: record.payment_status
+    });
+  }
+
+  const firstName = record.name.split(' ')[0] || record.name;
+  sendApprovalEmail(record.email, firstName, paymentUrl);
+  updatePaymentStatus.run('sent', id);
+
+  const updated = getAppById.get(id);
+  res.json(updated);
+});
+
 // SPA fallback — serve index.html for all non-API routes
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
