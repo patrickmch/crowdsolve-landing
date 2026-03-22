@@ -35,12 +35,35 @@ db.exec(`
   )
 `);
 
+// --- Schema migrations (idempotent) ---
+try { db.exec('ALTER TABLE applications ADD COLUMN updated_at TEXT'); } catch (e) {
+  if (!e.message.includes('duplicate column')) throw e;
+}
+try { db.exec("ALTER TABLE applications ADD COLUMN payment_status TEXT DEFAULT 'pending'"); } catch (e) {
+  if (!e.message.includes('duplicate column')) throw e;
+}
+// Backfill existing rows that have NULL payment_status
+db.exec("UPDATE applications SET payment_status = 'pending' WHERE payment_status IS NULL");
+
 const insertApp = db.prepare(`
   INSERT INTO applications (name, email, startup_idea, action_taken, community_contribution, commit_showing_up, commit_openness, referral_source)
   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const getAllApps = db.prepare('SELECT * FROM applications ORDER BY created_at DESC');
+const getAppsByStatus = db.prepare('SELECT * FROM applications WHERE status = ? ORDER BY created_at DESC');
+const getAppById = db.prepare('SELECT * FROM applications WHERE id = ?');
+const updateApp = db.prepare(`
+  UPDATE applications
+  SET status = COALESCE(?, status),
+      notes = COALESCE(?, notes),
+      payment_status = COALESCE(?, payment_status),
+      updated_at = datetime('now')
+  WHERE id = ?
+`);
+const updatePaymentStatus = db.prepare(`
+  UPDATE applications SET payment_status = ?, updated_at = datetime('now') WHERE id = ?
+`);
 
 // --- Notification (AgentMail) ---
 const AGENTMAIL_API = 'https://api.agentmail.to/v0';
