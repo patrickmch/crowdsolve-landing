@@ -65,9 +65,12 @@ const updatePaymentStatus = db.prepare(`
   UPDATE applications SET payment_status = ?, updated_at = datetime('now') WHERE id = ?
 `);
 
-// --- Notification (AgentMail) ---
+// --- Email (AgentMail) ---
 const AGENTMAIL_API = 'https://api.agentmail.to/v0';
 const AGENTMAIL_INBOX = process.env.AGENTMAIL_INBOX || 'tmac@agentmail.to';
+// NOTIFY_EMAILS: comma-separated additional recipients for application notifications.
+// AGENTMAIL_INBOX (Terry) always receives. NOTIFY_EMAILS adds Patrick, etc.
+const NOTIFY_EMAILS = (process.env.NOTIFY_EMAILS || '').split(',').map(e => e.trim()).filter(Boolean);
 
 function stripHtml(str) {
   if (!str) return '';
@@ -78,14 +81,32 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-async function sendNotification(data) {
+async function sendEmail(to, subject, text) {
   const apiKey = process.env.AGENTMAIL_API_KEY;
-  if (!apiKey) {
-    console.log('AGENTMAIL_API_KEY not set, skipping notification');
-    return;
-  }
+  if (!apiKey) { console.log('AGENTMAIL_API_KEY not set, skipping email to', to); return; }
 
-  const body = [
+  try {
+    // URL path = sender inbox. "to" field = recipient (can be external address).
+    const res = await fetch(
+      `${AGENTMAIL_API}/inboxes/${encodeURIComponent(AGENTMAIL_INBOX)}/messages/send`,
+      {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to, subject, text })
+      }
+    );
+    if (res.ok) {
+      console.log(`Email sent to ${to}: ${subject}`);
+    } else {
+      console.error(`Email to ${to} failed:`, res.status, await res.text());
+    }
+  } catch (err) {
+    console.error(`Email to ${to} failed:`, err.message);
+  }
+}
+
+function formatNotificationBody(data) {
+  return [
     `${data.name} (${data.email}) just applied for the CrowdSolve Beta.`,
     '',
     `Startup idea: ${data.startup_idea || '(not provided)'}`,
@@ -97,30 +118,19 @@ async function sendNotification(data) {
     `Heard about us: ${data.referral_source || '(not provided)'}`,
     '',
     `Commitments: ${data.commit_showing_up ? '[x]' : '[ ]'} Show up & engage  ${data.commit_openness ? '[x]' : '[ ]'} Share openly & give feedback`,
-    '',
-    'Please notify Patrick via Telegram about this new application.'
   ].join('\n');
+}
 
-  try {
-    const res = await fetch(`${AGENTMAIL_API}/inboxes/${encodeURIComponent(AGENTMAIL_INBOX)}/messages/send`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        to: AGENTMAIL_INBOX,
-        subject: `New CrowdSolve Beta Application: ${data.name}`,
-        text: body
-      })
-    });
-    if (res.ok) {
-      console.log(`AgentMail notification sent for ${data.email}`);
-    } else {
-      console.error('AgentMail notification failed:', res.status, await res.text());
-    }
-  } catch (err) {
-    console.error('AgentMail notification failed:', err.message);
+function sendNotification(data) {
+  const subject = `New CrowdSolve Beta Application: ${data.name}`;
+  const text = formatNotificationBody(data);
+
+  // Terry (always)
+  sendEmail(AGENTMAIL_INBOX, subject, text);
+
+  // Additional recipients (fire-and-forget)
+  for (const email of NOTIFY_EMAILS) {
+    sendEmail(email, subject, text);
   }
 }
 
