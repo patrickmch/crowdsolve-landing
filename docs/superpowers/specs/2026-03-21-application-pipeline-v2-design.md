@@ -1,8 +1,31 @@
 # CrowdSolve Application Pipeline v2
 
 **Date**: 2026-03-21
-**Status**: Approved
+**Status**: Implemented (2026-03-21)
 **Goal**: Complete the application-to-payment pipeline so Patrick can receive, review, approve, and collect payment from beta cohort applicants — all manageable from Claude Code via MCP.
+
+## Implementation Status
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Email notifications (Patrick + Terry) | Done | `NOTIFY_EMAILS=patrick@crowdsolve.eco` set on Railway |
+| Auth middleware + status filter | Done | `ADMIN_KEY` set on Railway, matches MCP config |
+| PATCH /api/applications/:id | Done | Approve/decline with email support |
+| POST /api/applications/:id/send-payment | Done | Double-send guard working |
+| GET /api/applications/:id | Done | Added during implementation (not in original spec) |
+| MCP server (5 tools) | Done | Registered in `~/.claude.json`, built at `~/.claude/mcp-servers/crowdsolve-applications/` |
+| Railway Volume | Done | Mounted at `/app/data`, 5GB |
+| Smoke tests | Done | 11/11 passing |
+| Stripe Payment Link | Blocked | Waiting on Tim to create Payment Link in Stripe dashboard |
+| crowdsolve.eco/beta URL | Dropped | Circle doesn't support serving external content at custom paths. Using Railway URL directly for beta outreach. |
+| Custom domain | Future | Can buy a domain (e.g. `joincrowdsolve.com`) and point to Railway when needed |
+
+### Key decisions made during implementation
+- **No iframe/Circle page**: Circle controls all routing on `crowdsolve.eco`. Iframe embed would look hacky. Decided to use Railway URL directly for beta cohort.
+- **MCP over admin UI**: Application management via MCP tools in Claude Code instead of building a web admin panel.
+- **SQLite + Railway Volume**: Sufficient for beta scale. Volume persists across deploys.
+- **AgentMail for all emails**: Sender is `tmac@agentmail.to`. Custom sender domain deferred.
+- **`GET /api/applications/:id`**: Added during implementation to support the MCP `get_application` tool efficiently (avoids fetching all applications).
 
 ## Context
 
