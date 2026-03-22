@@ -136,6 +136,15 @@ function sendNotification(data) {
 
 // --- API Routes ---
 
+function requireAdmin(req, res, next) {
+  const authHeader = req.headers.authorization;
+  const adminKey = process.env.ADMIN_KEY;
+  if (!adminKey || !authHeader || authHeader !== `Bearer ${adminKey}`) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  next();
+}
+
 app.post('/api/apply', (req, res) => {
   const { name, email, startup_idea, action_taken, community_contribution, commit_showing_up, commit_openness, referral_source } = req.body;
 
@@ -174,14 +183,26 @@ app.post('/api/apply', (req, res) => {
   res.status(201).json({ success: true, message: 'Application received' });
 });
 
-app.get('/api/applications', (req, res) => {
-  const authHeader = req.headers.authorization;
-  const adminKey = process.env.ADMIN_KEY;
-  if (!adminKey || !authHeader || authHeader !== `Bearer ${adminKey}`) {
-    return res.status(401).json({ error: 'Unauthorized' });
+app.get('/api/applications', requireAdmin, (req, res) => {
+  const { status } = req.query;
+  const validStatuses = ['new', 'approved', 'declined', 'waitlisted'];
+
+  if (status && !validStatuses.includes(status)) {
+    return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
   }
-  const applications = getAllApps.all();
+
+  const applications = status ? getAppsByStatus.all(status) : getAllApps.all();
   res.json({ count: applications.length, applications });
+});
+
+app.get('/api/applications/:id', requireAdmin, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
+
+  const record = getAppById.get(id);
+  if (!record) return res.status(404).json({ error: `No application found with ID ${id}` });
+
+  res.json(record);
 });
 
 // SPA fallback — serve index.html for all non-API routes
