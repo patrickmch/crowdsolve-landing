@@ -134,6 +134,38 @@ function sendNotification(data) {
   }
 }
 
+// --- Applicant Email Templates ---
+
+function sendApprovalEmail(to, firstName, paymentUrl) {
+  const subject = "You're in - next steps for CrowdSolve Beta";
+  const text = `Hey ${firstName},
+
+Your application to the CrowdSolve Beta cohort has been accepted.
+
+To confirm your spot, complete payment here: ${paymentUrl}
+
+The cohort kicks off April 13 and runs 10 weeks. Once payment is confirmed, you'll get an invite to the Circle community where everything happens.
+
+Questions? Reply to this email.
+
+- The CrowdSolve Team`;
+
+  sendEmail(to, subject, text);
+}
+
+function sendDeclineEmail(to, firstName) {
+  const subject = 'CrowdSolve Beta - Update on your application';
+  const text = `Hey ${firstName},
+
+Thanks for applying to the CrowdSolve Beta. We had a lot of strong applications for this cohort and unfortunately we're not able to offer you a spot this time.
+
+We'll keep your application on file and reach out if a spot opens up or when we launch the next cohort.
+
+- The CrowdSolve Team`;
+
+  sendEmail(to, subject, text);
+}
+
 // --- API Routes ---
 
 function requireAdmin(req, res, next) {
@@ -203,6 +235,52 @@ app.get('/api/applications/:id', requireAdmin, (req, res) => {
   if (!record) return res.status(404).json({ error: `No application found with ID ${id}` });
 
   res.json(record);
+});
+
+const VALID_STATUSES = ['new', 'approved', 'declined', 'waitlisted'];
+const VALID_PAYMENT_STATUSES = ['pending', 'sent', 'paid', 'failed'];
+
+app.patch('/api/applications/:id', requireAdmin, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
+
+  const record = getAppById.get(id);
+  if (!record) return res.status(404).json({ error: `No application found with ID ${id}` });
+
+  const { status, notes, payment_status } = req.body;
+
+  if (status && !VALID_STATUSES.includes(status)) {
+    return res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` });
+  }
+  if (payment_status && !VALID_PAYMENT_STATUSES.includes(payment_status)) {
+    return res.status(400).json({ error: `Invalid payment_status. Must be one of: ${VALID_PAYMENT_STATUSES.join(', ')}` });
+  }
+
+  const sanitizedNotes = notes ? stripHtml(notes) : null;
+  updateApp.run(status || null, sanitizedNotes, payment_status || null, id);
+
+  const updated = getAppById.get(id);
+
+  // Auto-send payment email if approving with ?send_payment=true
+  if (status === 'approved' && req.query.send_payment === 'true') {
+    const paymentUrl = process.env.STRIPE_PAYMENT_URL;
+    if (!paymentUrl) {
+      return res.status(400).json({ error: 'Approved but STRIPE_PAYMENT_URL not configured - payment email not sent', application: updated });
+    }
+    const firstName = updated.name.split(' ')[0] || updated.name;
+    sendApprovalEmail(updated.email, firstName, paymentUrl);
+    updatePaymentStatus.run('sent', id);
+    const final = getAppById.get(id);
+    return res.json(final);
+  }
+
+  // Auto-send decline email if declining with ?send_decline=true
+  if (status === 'declined' && req.query.send_decline === 'true') {
+    const firstName = updated.name.split(' ')[0] || updated.name;
+    sendDeclineEmail(updated.email, firstName);
+  }
+
+  res.json(updated);
 });
 
 // SPA fallback — serve index.html for all non-API routes
