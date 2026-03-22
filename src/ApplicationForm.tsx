@@ -115,12 +115,12 @@ export default function ApplicationForm() {
 
       <div className="space-y-3 pt-2">
         <label className={`flex items-start gap-3 cursor-pointer ${errors.commit_showing_up ? 'text-red-600' : ''}`}>
-          <input type="checkbox" name="commit_showing_up" className="mt-1 w-5 h-5 rounded accent-brand-600 cursor-pointer" />
-          <span className="text-sm leading-relaxed">I'll show up — participating in community posts, attending events, and engaging with the curriculum for the full 10 weeks</span>
+          <input type="checkbox" name="commit_showing_up" className="mt-1.5 w-4 h-4 rounded border-brand-900/20 accent-brand-600 cursor-pointer" />
+          <span className="text-sm font-semibold text-brand-900 leading-relaxed">I'll show up - participating in community posts, attending events, and engaging with the curriculum for the full 10 weeks</span>
         </label>
         <label className={`flex items-start gap-3 cursor-pointer ${errors.commit_openness ? 'text-red-600' : ''}`}>
-          <input type="checkbox" name="commit_openness" className="mt-1 w-5 h-5 rounded accent-brand-600 cursor-pointer" />
-          <span className="text-sm leading-relaxed">I'm ready to share my work openly and give feedback to other founders</span>
+          <input type="checkbox" name="commit_openness" className="mt-1.5 w-4 h-4 rounded border-brand-900/20 accent-brand-600 cursor-pointer" />
+          <span className="text-sm font-semibold text-brand-900 leading-relaxed">I'm ready to share my work openly and give feedback to other founders</span>
         </label>
       </div>
 
