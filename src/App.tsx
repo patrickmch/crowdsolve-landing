@@ -73,7 +73,7 @@ const Hero = () => (
             <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
           </a>
           <div className="flex flex-col">
-            <span className="text-sm font-semibold text-brand-900">Free to apply · Starts April 13</span>
+            <span className="text-sm font-semibold text-brand-900">Free to apply · Starts April 20</span>
             <span className="text-xs text-slate-500">Rolling review · Limited spots</span>
           </div>
         </div>
