@@ -5,3 +5,7 @@ dist/
 data/*.db
 data/*.db-wal
 data/*.db-shm
+
+# secrets — never commit
+.env
+.env.*
